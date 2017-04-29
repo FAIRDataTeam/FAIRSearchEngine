@@ -106,6 +106,12 @@
             <artifactId>fairmetadata4j</artifactId>
             <version>${fairmetadata.version}</version>
         </dependency>
+        <dependency>
+   		 <groupId>io.searchbox</groupId>
+	    		<artifactId>jest</artifactId>
+	   		 	<version>2.4.0</version>
+		</dependency>
+        
 		
 		<!-- https://mvnrepository.com/artifact/org.apache.any23/apache-any23 -->
 		<!--  dependency>
