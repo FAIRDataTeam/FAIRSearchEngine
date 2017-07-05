@@ -7,11 +7,19 @@ import java.util.Vector;
 import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonObject;
+//import com.hp.hpl.jena.query.Dataset;
 
 import io.searchbox.client.JestResult;
 import io.searchbox.client.JestClient;
 import io.searchbox.client.JestClientFactory;
 import io.searchbox.client.config.HttpClientConfig;
+import io.searchbox.core.DocumentResult;
+import io.searchbox.core.Get;
+import io.searchbox.core.Search;
+import io.searchbox.core.SearchResult;
+import io.searchbox.core.Suggest;
+import io.searchbox.core.Suggest.Builder;
+import io.searchbox.core.SuggestResult;
 import io.searchbox.indices.Analyze;
 
 public class JestESClient implements ESClient {
@@ -67,6 +75,122 @@ public class JestESClient implements ESClient {
 		                        .build());
 		 JestClient client = factory.getObject();
 		 return client;
+	}
+
+
+	@Override
+	public boolean documentExists(String id) throws IOException {
+		/*TODO optimize for head only - no need to retrieve body */
+		JestClient jc = this.getJestClient();
+		
+		Get get = new  Get.Builder("dataset", id).type("dataset").build();
+		
+		DocumentResult result = jc.execute(get);
+		
+		if(result.getResponseCode()==200) return true;
+		else return false;
+	}
+
+
+	@Override
+	public <T> List<T> search(String searchstring, Class typeParameterClass) {
+		
+		SearchResult result = jestSearch(searchstring);
+		
+		List<T> searchResult = result.getSourceAsObjectList( typeParameterClass );
+		
+		return searchResult;
+		
+	}
+	
+	private SearchResult jestSearch(String searchstring){
+		JestClient jc = this.getJestClient();
+		
+		
+/*		String query = "{\n" +
+	            "    \"id\": \"myTemplateId\"," +
+	            "    \"params\": {\n" +
+	            "        \"query_string\" : \"" + searchstring + "\"" +
+	            "    }\n" +
+	            "}";
+*/
+		String query = "\"query\": {"+
+				       "\"match\" : {"+
+				       "	\"_all\" : \""+searchstring+"\""+
+					   "}"+
+					   "}";
+		
+		String query2 = "{\n" +
+	            "    \"query\": {\n" +
+	            "        \"filtered\" : {\n" +
+	            "            \"query\" : {\n" +
+	            "                \"query_string\" : {\n" +
+	            "                    \"query\" : \""+searchstring+"\"\n" +
+	            "                }\n" +
+	            "            }\n" +
+//	            "            ,\"filter\" : {\n" +
+//	            "                \"term\" : { \"user\" : \"kimchy\" }\n" +
+//	            "            }\n" +
+	            "        }\n" +
+	            "    }\n" +
+	            "}";
+		
+		System.out.println(query);
+		
+		Search search = new Search.Builder(query2)
+	                // multiple index or types can be added.
+	                .addIndex("dataset")
+	                .addType("dataset")
+	                .build();
+		
+		SearchResult result = null;
+		try {
+			result =  jc.execute(search);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		return result;
+	}
+
+
+	@Override
+	public String search(String searchstring) {
+		SearchResult result = jestSearch(searchstring);
+		return result.getJsonString();
+	}
+
+
+	@Override
+	public <T> List<T> wordSuggest(String word, Class typeParameterClass) {
+				JestClient jc = this.getJestClient();
+		
+				String query = "{"+
+					"\"name_suggest\":{"+
+			        "\"text\":\""+word+"\","+
+			        	"\"completion\": {"+
+			            	"\"field\" : \"suggest\""+
+			        	  "}"+
+			    		"}"+
+					"}";
+				
+				System.out.println(query);
+				
+				Suggest suggest = new Suggest.Builder(query)
+							.addIndex("dataset")
+							.build();
+				
+				SuggestResult result = null;
+				
+				try {
+					result =  jc.execute(suggest);
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+				
+				return result.getSourceAsObjectList(typeParameterClass);
 	}
 
 }

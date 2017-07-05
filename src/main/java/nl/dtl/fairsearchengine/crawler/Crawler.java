@@ -2,7 +2,6 @@ package nl.dtl.fairsearchengine.crawler;
 
 //import static org.junit.Assert.fail;
 
-import org.eclipse.rdf4j.model.URI;
 import org.eclipse.rdf4j.model.impl.URIImpl;
 import org.eclipse.rdf4j.rio.RDFFormat;
 import org.eclipse.rdf4j.rio.RDFParseException;
@@ -15,6 +14,8 @@ import org.eclipse.rdf4j.rio.RDFParseException;
 import com.google.common.base.Charsets;
 import com.google.common.collect.ImmutableList;
 import com.google.common.io.Resources;
+import com.ipeirotis.readability.Readability;
+
 import org.eclipse.rdf4j.model.Model;
 
 
@@ -47,14 +48,23 @@ import nl.dtl.fairmetadata4j.model.DistributionMetadata;
 import nl.dtl.fairmetadata4j.model.FDPMetadata;
 import nl.dtl.fairmetadata4j.utils.ExampleFilesUtils;
 import nl.dtl.fairsearchengine.util.HttpURLConnect;
+import nl.dtl.fairsearchengine.util.JsonString;
 import nl.dtl.fairsearchengine.util.Theme.Theme;
+import nl.dtl.fairsearchengine.util.esClient.ESClient;
 import nl.dtl.fairsearchengine.util.esClient.JestESClient;
-import nl.dtl.fairsearchengine.util.license.SoftwareLicenseCache;
+import nl.dtl.fairsearchengine.util.license.License;
+import nl.dtl.fairsearchengine.util.license.SoftwareLicenseFactory;
 
+import org.apache.commons.cli.CommandLine;
+import org.apache.commons.cli.CommandLineParser;
+import org.apache.commons.cli.DefaultParser;
+import org.apache.commons.cli.Options;
+import org.apache.commons.cli.ParseException;
 import org.apache.commons.io.IOUtils;
 import org.apache.tika.mime.MimeTypeException;
 import org.apache.tika.mime.MimeTypes;
 import org.eclipse.rdf4j.model.IRI;
+import org.eclipse.rdf4j.model.Literal;
 import org.eclipse.rdf4j.model.Statement;
 import org.eclipse.rdf4j.rio.Rio;
 import org.eclipse.rdf4j.rio.UnsupportedRDFormatException;
@@ -68,26 +78,49 @@ import org.eclipse.rdf4j.model.impl.URIImpl;
 public class Crawler {
 	
 	//static String FDPUri = "http://dev-vm.fair-dtls.surf-hosted.nl:8082/fdp";
-	static String FDPUri = "http://semlab1.liacs.nl:8080/fdp";
+	//static String FDPUri = "http://semlab1.liacs.nl:8080/fdp";
+	private static String ElasticSearchServer = "http://127.0.0.1:9200/";
+	
 	//static String FDPCatalogURI = "http://dev-vm.fair-dtls.surf-hosted.nl:8082/fdp/biobank";
 	//static String FDPCatalogURI = "";
 	
+	//private static String DEFAULTURI = "https://lorentz.fair-dtls.surf-hosted.nl/fdp/";
+	private static String DEFAULTURI = "http://dev-vm.fair-dtls.surf-hosted.nl:8082/fdp/";
+	
+	private String fdpuri;
+	
 	public static void main(String argv[]) throws URISyntaxException{
-		//if(argv.length==1)
-		//	new Crawler().parse1(FDPUri);
-		//else
-		//	new Crawler().parse1(argv[1]);
 		
-	
-	
-		//return;
+		Options options = new Options();
+		options.addOption("f", true, "FAIR data point to parse");
+		options.addOption("s", true, "Search engine API: eg.: www.example.com:9200");
+		
+		CommandLineParser parser = new DefaultParser();
+		
 		
 		Crawler c = new Crawler();
 		
-		if(argv.length==0)
-			c.parse1("http://dev-vm.fair-dtls.surf-hosted.nl:8082/fdp/");
-		else
-			c.parse1(argv[0]);
+		try {
+			CommandLine cmd = parser.parse( options, argv);
+		
+			if(cmd.hasOption("t")){
+				c.setElasticSearchServer(cmd.getOptionValue("t"));				
+			}
+			if(cmd.hasOption("f")){
+				c.parse1(cmd.getOptionValue("f"));		
+			} else {
+				c.parse1(DEFAULTURI);
+			}
+		
+							
+		} catch (ParseException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		
+		
+		
+		
 		
 		//c.parse2();
 		
@@ -116,17 +149,22 @@ public class Crawler {
 		//System.out.println(o.get());
 	} 
 	
+	private void setElasticSearchServer(String address) {
+		this.ElasticSearchServer  = address;
+	}
+
 	public static void parse2(){
 		
 		
-		try {
+		/*try {
 			IRI iri = new URIImpl("http://dbpedia.org/data/The_Lord_of_the_Rings");
 			Theme t = new Theme(iri);
 			t.getLabel();
 		} catch (Exception e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
-		}		
+		}		*/
+		
 	}
 
 	
@@ -136,10 +174,10 @@ public class Crawler {
 		//else
 		//	new Crawler().parse1(argv[1]);
 		String url = "https://rdflicense.appspot.com/rdflicense/cc-by-nc-nd3.0";
-		SoftwareLicenseCache slc = new SoftwareLicenseCache(); 
+		SoftwareLicenseFactory slc = new SoftwareLicenseFactory(); 
 		try {
 			URL urlObj = new URL(url);
-			slc.SoftwareLicense(urlObj);
+			//slc.SoftwareLicense(urlObj);
 		} catch (MalformedURLException e) {
 			System.out.println(e.getMessage());
 			//fail("Malformed URL: " + e.getMessage());
@@ -156,7 +194,7 @@ public class Crawler {
 		//else
 		//	new Crawler().parse1(argv[1]);
 		String url = "https://rdflicense.appspot.com/rdflicense/cc-by-nc-nd3.0";
-		SoftwareLicenseCache slc = new SoftwareLicenseCache(); 
+		SoftwareLicenseFactory slc = new SoftwareLicenseFactory(); 
 		try {
 			URL urlObj = new URL(url);
 			slc.SoftwareLicense(urlObj);
@@ -233,13 +271,14 @@ public class Crawler {
 	}
 	
 	public void parse1(String uri){
-		
+	
+	System.out.println("Crawler version 0.1");
 		
 	CatalogMetadata catalogMetadata = null;
 	DatasetMetadata datasetMetadata = null;
 	DistributionMetadata distributionMetdada = null;
 	
-	List<String> jsonList = new Vector();
+	List<JsonString> jsonList = new Vector();
 	     
      int ci = 0,  di  = 0 , dii = 0;
 	 List<IRI> catalogList;
@@ -252,7 +291,7 @@ public class Crawler {
 			    catalogList = new Vector();
 			    
 			    for(int i = 0; i < catalogURI.size(); i++){
-			    	  System.out.println("Identified catalogs " + catalogURI.get(i).stringValue());
+			    	  
 			    	  catalogList.add(catalogURI.get(i));
 			    }
 			      
@@ -260,11 +299,16 @@ public class Crawler {
 				for(IRI ctURI : catalogList){
     
 		    	   try{
+		    		  System.out.println("\n Identified and parsing catalog " + ctURI.stringValue());
 		    	   	  catalogMetadata = this.doCatalogMetadataParser(ctURI);
+		    	   	 
 		    	   	  setupJSON(fdpmetadata, catalogMetadata, datasetMetadata, distributionMetdada, ctURI, jsonList);
 		    	   } catch(IOException | MetadataParserException | MimeTypeException e){
-		    		   
-		    	   }			
+		    		  e.printStackTrace();
+		    	   } catch (Exception e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}			
 				}
 	       
 		} catch (RDFParseException | UnsupportedRDFormatException | IOException e1) {
@@ -275,20 +319,32 @@ public class Crawler {
 	       
 	    HttpURLConnect httpCon = new HttpURLConnect();
 	    int i = 0;
-	    for(String jsonElem: jsonList){
-	    	String data = "{ \"create\": { \"_index\": \"dataset\", \"_type\": \"dataset\"}}\n";
-	    	data += jsonElem + "\n";
+	    
+	    ESClient esclient = new JestESClient();
+	    
+	    for(JsonString jsonElem: jsonList){
+	    
+	    String data = "";
 	    	
-	    	//System.out.println("{ \"create\": { \"_index\": \"dataset\", \"_type\": \"dataset\"}}" );
-	    	//System.out.println(jsonElem);	
-	    	
-	    	try {
-	    			httpCon.sendPost("http://127.0.0.1:9200/_bulk", data);
-	    			//httpCon.sendPost("http://145.100.59.75/_bulk", data);
-	    			//System.out.println(data);
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
+		    try{
+		    	//add force import and force update
+		    	
+		    	if ( esclient.documentExists(jsonElem.getId()) ) {
+		    		data = "{ \"update\": { \"_index\": \"dataset\", \"_type\": \"dataset\", \"_id\": \""+jsonElem.getId()+"\"}}\n";  	
+		    		data += "{ \"doc\" : " + jsonElem.getJson() + " } \n";
+		    	} else {
+		    		data = "{ \"create\": { \"_index\": \"dataset\", \"_type\": \"dataset\", \"_id\": \""+jsonElem.getId()+"\"}}\n";
+		    		data += jsonElem.getJson() + "\n";
+		    	}
+		    	System.out.println("\n"+data);
+		    	httpCon.sendPost("http://127.0.0.1:9200/_bulk", data);
+		    	
+		    } catch(IOException e){
+		    	System.out.println(e.getMessage());
+		    	System.out.println("Skipping "+jsonElem.getId()+". Error found while checking if data exists.");
+		    } catch (Exception e) {
+		    	System.out.println(e.getMessage());
+		    	System.out.println("Skipping "+jsonElem.getId()+". Error inserting data.");
 			}
     
 	    }
@@ -296,27 +352,69 @@ public class Crawler {
 	}
 
 	private void setupJSON(FDPMetadata fdpmetadata, CatalogMetadata catalogMetadata, DatasetMetadata datasetMetadata, DistributionMetadata distributionMetdada, URI ctURI, List jsonList) throws MalformedURLException, MetadataParserException, IOException, MimeTypeException{
+		System.out.println("parsing datasets");
+		
 		List<IRI> dataset = catalogMetadata.getDatasets();
 		//System.out.println("> "+ci++ + " " + ctURI.toString() + " " + dataset.size());
 		
+		System.out.println("parsed " +dataset.size()+ " datasets");
+		
+		int  di = 0;
 		for(URI uri : dataset){
-			//System.out.println(">> "+di++);
-			datasetMetadata = this.doDatasetMetadaParser(uri);
+			System.out.println(uri  +">> "+di++);
+			
+			
+			try {
+				datasetMetadata = this.doDatasetMetadaParser(uri);
+			} catch (Exception e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
+			
+		
+			
+			
 			List<IRI> distribution = datasetMetadata.getDistributions();
 				JSONObject es = new JSONObject();
 				
+				//es.put("_id", uri.stringValue());
+				
 				//if(catalogMetadata.getHomepage()!=null) es.put("latndingPage");
 				if(datasetMetadata.getTitle()!=null) es.put("title", datasetMetadata.getTitle().stringValue());
-				if(datasetMetadata.getDescription()!=null) es.put("description", datasetMetadata.getDescription().stringValue());
+				if(datasetMetadata.getDescription()!=null){
+					es.put("description", datasetMetadata.getDescription().stringValue());
+					
+					Readability r = new Readability(datasetMetadata.getDescription().stringValue());
+					
+					Map<String,Double> readabilityMetrics = new HashMap();
+					
+					readabilityMetrics.put("ARI", new Double(r.getARI()));
+					readabilityMetrics.put("ColemanLiau", new Double(r.getColemanLiau()));
+					readabilityMetrics.put("Complex", new Double(r.getComplex()));
+					readabilityMetrics.put("FleschKincaidGradeLevel", new Double(r.getFleschKincaidGradeLevel()));
+					readabilityMetrics.put("FleschReadingEase", new Double(r.getFleschReadingEase()));
+					readabilityMetrics.put("GunningFog", new Double(r.getGunningFog()));
+					readabilityMetrics.put("SMOG", new Double(r.getSMOG()));
+					readabilityMetrics.put("SMOGIndex", new Double(r.getSMOGIndex()));
+					
+					es.put("readabilityMetrics", readabilityMetrics);
+				}
 				if(catalogMetadata.getTitle()!=null) es.put("catalogTitle", catalogMetadata.getTitle().stringValue());
 				if(datasetMetadata.getLandingPage()!=null) es.put("landingPage", datasetMetadata.getLandingPage());
+				
+				List<Literal> keywordList = datasetMetadata.getKeywords();
+				List<String> keywordStringList = new Vector<String>();
+				
+				for(Literal keyword: keywordList){
+					keywordStringList.add(keyword.stringValue());
+				}
+				
+				es.put("keyword", keywordStringList);
 				
 				IRI institutionCountry  = fdpmetadata.getInstitutionCountry();
 				List<IRI> catalogThemes = datasetMetadata.getThemes();
 				
-				
-				es.put("repositoryTitle", "DTL FAIR Data Point");
-				
+				es.put("repositoryTitle", fdpmetadata.getTitle().stringValue() );
 				es.put("repositoryCountry", "NL"); //TODO improve
 				
 				//es.put("description_suggest", datasetMetadata.getDescription().stringValue() );
@@ -327,12 +425,14 @@ public class Crawler {
 				JestESClient jec = new JestESClient();
 				List<String> tokenList = jec.doTextAnalysis("english", datasetMetadata.getTitle().stringValue());
 				
-				for(int i = 0; i < tokenList.size(); i++){
-					System.out.println(tokenList.get(i) );
-					suggest.add( tokenList.get(i) );
-				}
+				//adding tokenized list from english
+				for(String token : tokenList)	
+							suggest.add( token );
+				//adding list of keywords
+				for(String keyword : keywordStringList)
+							suggest.add( keyword );
 				
-				
+	
 				es.put("suggest", new JSONObject().put("input", suggest ));
 
 				
@@ -354,9 +454,15 @@ public class Crawler {
 				List<Map> distributionList = new Vector();
 						
 				for(URI distributionUri : distribution){
+					
 						   Map<String,String> distributionMap = new HashMap();
 						   //System.out.println(">>> "+dii++);
-						   distributionMetdada = this.doDistributionMetadataParser(distributionUri);
+						   try {
+							distributionMetdada = this.doDistributionMetadataParser(distributionUri);
+						} catch (Exception e) {
+							// TODO Auto-generated catch block
+							e.printStackTrace();
+						}
 						   
 						   if(distributionMetdada.getTitle()!=null)
 						     distributionMap.put("title", distributionMetdada.getTitle().stringValue());
@@ -405,14 +511,14 @@ public class Crawler {
 				es.put("distribution", distributionList);
 				
 				//improve structure
-				es.put("FDPurl", FDPUri.toString());
+				es.put("FDPurl", DEFAULTURI.toString());
 				es.put("catalogURL", ctURI);
 				es.put("datasetURL", uri);
 				
 				//jsonList.add("datasetURL")
 				
 				System.out.println("JSON: "+es.toString());
-				jsonList.add(es.toString());
+				jsonList.add(new JsonString(uri.stringValue() , es.toString()));
 		}
 	}
 	
@@ -431,12 +537,17 @@ public class Crawler {
 	    }
 	}
 	
-	private DistributionMetadata doDistributionMetadataParser(URI distributionUri) throws MalformedURLException, IOException, MetadataParserException {
+	private DistributionMetadata doDistributionMetadataParser(URI distributionUri) throws Exception {
 		//System.out.println("=== "+distributionUri.stringValue());
 		
 		DistributionMetadataParser disMP = new DistributionMetadataParser();
-		InputStream in2 = new URL(distributionUri.stringValue()).openStream();
-		DistributionMetadata distributionMetadata = disMP.parse(IOUtils.toString(in2), new URIImpl(distributionUri.toString()), RDFFormat.TURTLE );
+		
+		HttpURLConnect httpCon = new HttpURLConnect();
+		
+		//InputStream in2 = new URL(distributionUri.stringValue()).openStream();
+		
+		
+		DistributionMetadata distributionMetadata = disMP.parse(httpCon.sendGet(distributionUri.stringValue()), new URIImpl(distributionUri.toString()), RDFFormat.TURTLE );
 	
 		//System.out.println("======Des "+distributionMetadata.getDescription());
 		//System.out.println("======Dow "+distributionMetadata.getDownloadURL());
@@ -447,11 +558,16 @@ public class Crawler {
 		//System.out.println("json> " + es.toString());
 	}
 
-	private DatasetMetadata doDatasetMetadaParser(URI uri) throws MalformedURLException, IOException, MetadataParserException {
+	private DatasetMetadata doDatasetMetadaParser(URI uri) throws Exception {
 		System.out.println(uri.stringValue());
 		DatasetMetadataParser dmp = new DatasetMetadataParser();
-		InputStream in = new URL( uri.stringValue() ).openStream();
-		DatasetMetadata dm = dmp.parse(IOUtils.toString(in), new URIImpl(uri.toString()), RDFFormat.TURTLE);
+		
+		HttpURLConnect httpConnect = new HttpURLConnect();
+		
+		//InputStream in = new URL( uri.stringValue() ).openStream();
+		
+		DatasetMetadata dm = dmp.parse(httpConnect.sendGet(uri.stringValue()), new URIImpl(uri.toString()), RDFFormat.TURTLE);
+		
 		//System.out.println("-"+dm.getDescription());
 		//System.out.println("-"+dm.getTitle());
 		//System.out.println("-"+dm.getDescription());
@@ -460,25 +576,31 @@ public class Crawler {
 				
 	}
 
-	public CatalogMetadata doCatalogMetadataParser(IRI ctURI) throws MetadataParserException, MalformedURLException, IOException{
+	public CatalogMetadata doCatalogMetadataParser(IRI ctURI) throws Exception{
 		 //System.out.println("-> "+ctURI.toString());
 		   
-	       CatalogMetadataParser parser = new CatalogMetadataParser();	
+		  HttpURLConnect httpcon = new HttpURLConnect();
+		  String rdf = httpcon.sendGet(ctURI.toString());
+		
+		  CatalogMetadataParser parser = new CatalogMetadataParser();
+		  
+		  // alternative way to get data
+	     /* 	
 	       
 	       InputStream in;
 	       //in = new URL( "http://dev-vm.fair-dtls.surf-hosted.nl:8082/fdp/biobank" ).openStream();
 	       in = new URL( ctURI.toString() ).openStream();
 	        
+	         String rdf = IOUtils.toString(in);*/
+		  
 	        IRI cURI = ctURI;
-	        IRI fURI = new URIImpl(FDPUri);
-	        String rdf = IOUtils.toString(in);
-	        //System.out.println(rdf);
+	        IRI fURI = new URIImpl(DEFAULTURI);   
+	        
+	        System.out.println(rdf);
+	        
 	        CatalogMetadata metadata = parser.parse(
 	                 rdf, cURI, fURI, 
 	                RDFFormat.TURTLE);
-	        
-	        
-	 
 	        
 	        return metadata;
 	}

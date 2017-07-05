@@ -49,7 +49,8 @@ public class HttpURLConnect {
 		HttpGet request = new HttpGet(url);
 
 		// add request header
-		request.addHeader("User-Agent", USER_AGENT);
+		//request.addHeader("User-Agent", USER_AGENT);
+		//request.addHeader("Accept", "text/turtle");
 
 		HttpResponse response = client.execute(request);
 
@@ -66,7 +67,7 @@ public class HttpURLConnect {
 			result.append(line);
 		}
 
-		//System.out.println(result.toString());
+		System.out.println(result.toString());
 		
 		return result.toString();
 	}

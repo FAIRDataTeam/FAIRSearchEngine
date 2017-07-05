@@ -24,46 +24,18 @@ import nl.dtl.fairsearchengine.util.HttpURLConnect;
 
 public class Theme {
 	
-	IRI iri;
+	String title;
 
-	public Theme(IRI iri){
-		this.iri = iri;
+	public Theme(){
+		
 	}
 	
-	public String getLabel(){
-		
-		HttpURLConnect httpcon = new HttpURLConnect();
-		String doc = "";
-		
-		try {
-			
-			doc = httpcon.sendGet(this.iri.toString() + ".n3");
-			System.out.println(doc);
-			
-			/*Model model = Rio.parse(new StringReader(doc),
-		    		this.iri, RDFFormat.TURTLE);*/
-
-            Model model = Rio.parse(new StringReader(doc), this.iri.stringValue() , RDFFormat.TURTLE);
-                   
-			Model m  = model.filter(this.iri, RDFS.LABEL, null);
-		
-		    Iterator<Statement> it = m.iterator();
-			
-			List<Statement> statements = ImmutableList.copyOf(it);
-			
-			for (Statement st: m) {
-				System.out.println(st.toString());
-			}
-			
-			
-			} catch (Exception e) {
-				// TODO Auto-generated catch block
-				e.printStackTrace();
-			}
-		
-			System.out.println("step2");
-		
-		return null;
+	public String getTitle(){
+		return title;	
+	}
+	
+	public void setTitle(String title){
+		this.title = title;
 	}
 	
 

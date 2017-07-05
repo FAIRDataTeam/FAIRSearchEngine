@@ -12,7 +12,7 @@ public class LicenseTester {
 	@Test
 	public void test() {
 		String url = "http://rdflicense.appspot.com/rdflicense/cc-by-nc-nd3.0";
-		SoftwareLicenseCache slc = new SoftwareLicenseCache(); 
+		SoftwareLicenseFactory slc = new SoftwareLicenseFactory(); 
 		try {
 			slc.SoftwareLicense(new URL(url));
 		} catch (MalformedURLException e) {
