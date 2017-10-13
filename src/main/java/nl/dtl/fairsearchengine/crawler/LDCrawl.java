@@ -2,7 +2,7 @@ package nl.dtl.fairsearchengine.crawler;
 
 import java.io.IOException;
 import java.io.StringReader;
-
+import java.util.List;
 
 import org.eclipse.rdf4j.model.Model;
 import org.eclipse.rdf4j.model.Statement;
@@ -17,7 +17,12 @@ import nl.dtl.fairsearchengine.util.HttpURLConnect;
 import nl.dtl.fairsearchengine.util.license.License;
 
 public class LDCrawl {
-
+	
+	/*list all Entities*/
+	/*get all subjects for a given entity*/
+	/*get all subject predicate object*/
+         //index literals
+	     //resolve entities and fill the result (or/and add the object?)
 	
 	public LDCrawl(URI seedURI, String location){
 		HttpURLConnect httpcon = new HttpURLConnect();
@@ -47,6 +52,12 @@ public class LDCrawl {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
+	
+	}
+	
+	List<URI> autoSeed(){
+		//List all concepts
+		return null;
 	}
 	
 }

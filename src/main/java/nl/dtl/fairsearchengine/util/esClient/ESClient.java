@@ -10,5 +10,6 @@ public interface ESClient {
 	<T> List<T>  search(String search, Class typeParameterClass);
 	<T> List<T>  wordSuggest(String word, Class typeParameterClass);
 	String search(String search);
+	String wordSuggest(String s);
 
 }

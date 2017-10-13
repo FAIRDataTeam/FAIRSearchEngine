@@ -164,33 +164,48 @@ public class JestESClient implements ESClient {
 
 	@Override
 	public <T> List<T> wordSuggest(String word, Class typeParameterClass) {
-				JestClient jc = this.getJestClient();
+				SuggestResult sr = doWordSuggest(word);
+				return sr.getSourceAsObjectList(typeParameterClass);
+	}
+
+
+	@Override
+	public String wordSuggest(String s) {
+		SuggestResult sr = doWordSuggest(s);
+		return sr.getJsonString();
+	}
+	
+	private SuggestResult doWordSuggest(String s){
 		
-				String query = "{"+
-					"\"name_suggest\":{"+
-			        "\"text\":\""+word+"\","+
-			        	"\"completion\": {"+
-			            	"\"field\" : \"suggest\""+
-			        	  "}"+
-			    		"}"+
-					"}";
-				
-				System.out.println(query);
-				
-				Suggest suggest = new Suggest.Builder(query)
-							.addIndex("dataset")
-							.build();
-				
-				SuggestResult result = null;
-				
-				try {
-					result =  jc.execute(suggest);
-				} catch (IOException e) {
-					// TODO Auto-generated catch block
-					e.printStackTrace();
-				}
-				
-				return result.getSourceAsObjectList(typeParameterClass);
+		JestClient jc = this.getJestClient();
+		
+		String query = "{"+
+			"\"name_suggest\":{"+
+	        "\"text\":\""+s+"\","+
+	        	"\"completion\": {"+
+	            	"\"field\" : \"suggest\""+
+	        	  "}"+
+	    		"}"+
+			"}";
+		
+		System.out.println(query);
+		
+		Suggest suggest = new Suggest.Builder(query)
+					.addIndex("dataset")
+					.build();
+		
+		SuggestResult result = null;
+		
+		try {
+			result =  jc.execute(suggest);
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+		//SuggestResult result = null;
+		
+		return result;
+		
 	}
 
 }

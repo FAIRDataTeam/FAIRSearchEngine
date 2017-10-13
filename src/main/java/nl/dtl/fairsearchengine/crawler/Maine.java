@@ -1,5 +1,6 @@
 package nl.dtl.fairsearchengine.crawler;
 
+import java.net.URISyntaxException;
 import java.util.List;
 
 import org.eclipse.rdf4j.model.URI;
@@ -10,6 +11,7 @@ import com.ipeirotis.readability.Readability;
 
 import nl.dtl.fairsearchengine.model.SearchDataset;
 import nl.dtl.fairsearchengine.model.WordSuggest;
+import nl.dtl.fairsearchengine.util.LinkedDataResolver;
 import nl.dtl.fairsearchengine.util.esClient.ESClient;
 import nl.dtl.fairsearchengine.util.esClient.JestESClient;
 import nl.dtl.fairsearchengine.util.license.License;
@@ -22,8 +24,20 @@ public class Maine {
 	public static void main(String argv[]) {
 		//new Maine().readability();
 		//new Maine().testSearch("aa");
-		new Maine().testSuggestion("d");
-		
+		//new Maine().testSuggestion("d");
+		new Maine().linkeddata();
+	}
+	
+	void linkeddata() {
+		try {
+			LinkedDataResolver ld = new LinkedDataResolver();
+			//ld.resolve(new java.net.URI("http://dbpedia.org/data/The_Lord_of_the_Rings"));
+			java.net.URI destURI = ld.resolve(new java.net.URI("http://dbpedia.org/data/France"));
+			
+		} catch (URISyntaxException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
 	}
 	
 	void readability(){

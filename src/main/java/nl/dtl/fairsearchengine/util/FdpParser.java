@@ -9,6 +9,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Vector;
+import java.util.logging.Logger;
 
 import org.apache.tika.mime.MimeTypeException;
 import org.apache.tika.mime.MimeTypes;
@@ -38,6 +39,8 @@ import nl.dtl.fairsearchengine.util.esClient.ESClient;
 import nl.dtl.fairsearchengine.util.esClient.JestESClient;
 
 public class FdpParser {
+	
+	private static final Logger LOGGER = Logger.getLogger(FdpParser.class.getName());
 
 	//TODO Change to URI object
 	String uri; 
@@ -48,7 +51,7 @@ public class FdpParser {
 		
 	this.uri = uri;	
 		
-	System.out.println("NParser  v0.1");
+	LOGGER.info("NParser  v0.1");
 		
 	CatalogMetadata catalogMetadata = null;
 	DatasetMetadata datasetMetadata = null;
@@ -131,7 +134,6 @@ public class FdpParser {
 		System.out.println("parsing datasets");
 		
 		List<IRI> dataset = catalogMetadata.getDatasets();
-		//System.out.println("> "+ci++ + " " + ctURI.toString() + " " + dataset.size());
 		
 		System.out.println("parsed " +dataset.size()+ " datasets");
 		
