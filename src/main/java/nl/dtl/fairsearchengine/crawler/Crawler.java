@@ -88,7 +88,8 @@ public class Crawler {
 	
 	//private static String DEFAULTURI = "https://lorentz.fair-dtls.surf-hosted.nl/fdp/";
 	//private static String DEFAULTURI = "http://dev-vm.fair-dtls.surf-hosted.nl:8082/fdp/";
-	private static String DEFAULTURI = "http://fdp.wikipathways.org/fdp/";
+	//private static String DEFAULTURI = "http://fdp.wikipathways.org/fdp/";
+	private static String DEFAULTURI = "http://136.243.4.200:8087/fdp";
 	
 	private String fdpuri;
 	
@@ -96,7 +97,7 @@ public class Crawler {
 		
 		Options options = new Options();
 		options.addOption("f", true, "FAIR data point to parse");
-		options.addOption("s", true, "Search engine API: eg.: www.example.com:9200");
+		options.addOption("o", true, "Leave empty for stdout, \"-o example.txt\" to write to file, \"-o http://127.0.0.1/_bulk\" to load to an elasticsearch instance ");
 		
 		CommandLineParser parser = new DefaultParser();
 		
@@ -106,15 +107,23 @@ public class Crawler {
 		try {
 			CommandLine cmd = parser.parse( options, argv);
 		
-			if(cmd.hasOption("t")){
-				c.setElasticSearchServer(cmd.getOptionValue("t"));				
+
+			String output;
+			
+			if(cmd.hasOption("o") && cmd.getOptionValue("o").isEmpty()) {
+				output = null;
+			} else if(cmd.hasOption("o")) {
+				output = cmd.getOptionValue("o");
+			} else {
+				output = "http://127.0.0.1:9200/_bulk";
 			}
+			
 			if(cmd.hasOption("f")){
 				FdpParser fdpparser = new FdpParser();
-				fdpparser.parse(cmd.getOptionValue("f"));	
+				fdpparser.parse(cmd.getOptionValue("f"), output);
 			} else {
 				FdpParser fdpparser = new FdpParser();
-				fdpparser.parse(DEFAULTURI);
+				fdpparser.parse(DEFAULTURI, output);
 			}
 		
 							

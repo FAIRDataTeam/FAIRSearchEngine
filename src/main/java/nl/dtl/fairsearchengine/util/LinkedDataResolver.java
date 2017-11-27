@@ -14,8 +14,6 @@ public class LinkedDataResolver {
 	private Hashtable<String, LinkedData2Web> map = null;
 	
 	
-	
-	
 	public LinkedDataResolver(){
 		init();
 	}
@@ -25,6 +23,8 @@ public class LinkedDataResolver {
 		
 		map.put("http://www.lexvo.org/", new LinkedData2Web("/http:\\/\\/lexvo\\.org\\/id\\/iso3166\\/([a-zA-Z]+)/g","h"));
 		map.put("http://dbpedia.org/", new LinkedData2Web("http:\\/\\/dbpedia\\.org\\/data\\/(.+)", "http://dbpedia.org/data/{{0}}.n3"));
+		map.put("http://www.wikidata.org/", new LinkedData2Web("http:\\/\\/www\\.wikidata\\.org\\/entity\\/(.+)", "http://www.wikidata.org/wiki/Special:EntityData/{{0}}.ttl"));
+		                                       
 	}
 
 	public URI resolve(URI uri) {
@@ -37,7 +37,8 @@ public class LinkedDataResolver {
 		 
 		 if(l2w==null) System.out.println("is null");
 	
-		 Pattern p = Pattern.compile("http:\\/\\/dbpedia\\.org\\/data\\/(.+)");
+		 //Pattern p = Pattern.compile("http:\\/\\/dbpedia\\.org\\/data\\/(.+)");
+		 Pattern p = Pattern.compile(l2w.getLinkedDataUri());
 		 
 		 Matcher m = p.matcher(uri.toASCIIString());
 	

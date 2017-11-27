@@ -43,14 +43,17 @@ public class HttpURLConnect {
 	// HTTP GET request
 	public String sendGet(String url) throws Exception {
 		
-		//String url = "http://www.google.com/search?q=developer";
 
 		HttpClient client = new DefaultHttpClient();
 		HttpGet request = new HttpGet(url);
 
 		// add request header
 		//request.addHeader("User-Agent", USER_AGENT);
-		//request.addHeader("Accept", "text/turtle");
+		request.addHeader("Accept", "text/turtle");
+
+		//In some situations the Stream doesn't close when the size is unknown. Header should be added
+		//Check https://stackoverflow.com/questions/1577719/java-sockets-bufferedreader-and-readline-hang/1577833#1577833
+		request.addHeader("Connection", "close");
 
 		HttpResponse response = client.execute(request);
 
@@ -58,18 +61,21 @@ public class HttpURLConnect {
 		System.out.println("Response Code : " +
                        response.getStatusLine().getStatusCode());
 
-		BufferedReader rd = new BufferedReader(
-                       new InputStreamReader(response.getEntity().getContent()));
-
-		StringBuffer result = new StringBuffer();
-		String line = "";
-		while ((line = rd.readLine()) != null) {
-			result.append(line);
-		}
-
-		System.out.println(result.toString());
+		BufferedReader bufferedReader = new BufferedReader(
+                new InputStreamReader(response.getEntity().getContent()));
 		
-		return result.toString();
+		int charRead = 0;
+        char[] buffer = new char[1024];
+        StringBuffer stringBuffer = new StringBuffer();
+        
+        while ((charRead = bufferedReader.read(buffer)) > 0) {
+            stringBuffer.append(buffer, 0, charRead);
+        }
+	
+		//System.out.println("result" + stringBuffer.toString());
+		
+		return stringBuffer.toString();
+		
 	}
 
 	// HTTP POST request

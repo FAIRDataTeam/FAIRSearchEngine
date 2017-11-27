@@ -12,6 +12,7 @@ import com.ipeirotis.readability.Readability;
 import nl.dtl.fairsearchengine.model.SearchDataset;
 import nl.dtl.fairsearchengine.model.WordSuggest;
 import nl.dtl.fairsearchengine.util.LinkedDataResolver;
+import nl.dtl.fairsearchengine.util.Uri2Label;
 import nl.dtl.fairsearchengine.util.esClient.ESClient;
 import nl.dtl.fairsearchengine.util.esClient.JestESClient;
 import nl.dtl.fairsearchengine.util.license.License;
@@ -30,9 +31,13 @@ public class Maine {
 	
 	void linkeddata() {
 		try {
-			LinkedDataResolver ld = new LinkedDataResolver();
+			//LinkedDataResolver ld = new LinkedDataResolver();
 			//ld.resolve(new java.net.URI("http://dbpedia.org/data/The_Lord_of_the_Rings"));
-			java.net.URI destURI = ld.resolve(new java.net.URI("http://dbpedia.org/data/France"));
+			//java.net.URI destURI = ld.resolve(new java.net.URI("http://dbpedia.org/data/France"));
+			
+			Uri2Label uri2label = new Uri2Label(new java.net.URI("http://dbpedia.org/data/Spain"));
+			String label = uri2label.getLabel();
+			System.out.println(label);
 			
 		} catch (URISyntaxException e) {
 			// TODO Auto-generated catch block

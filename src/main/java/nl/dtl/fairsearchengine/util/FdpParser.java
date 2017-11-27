@@ -1,10 +1,20 @@
 package nl.dtl.fairsearchengine.util;
 
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
 import java.io.IOException;
 import java.net.HttpURLConnection;
 import java.net.MalformedURLException;
+import java.net.URISyntaxException;
 import java.net.URL;
+import java.net.URLEncoder;
+import java.nio.channels.FileChannel;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.ArrayList;
+import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -22,6 +32,7 @@ import org.eclipse.rdf4j.rio.RDFParseException;
 import org.eclipse.rdf4j.rio.UnsupportedRDFormatException;
 import org.json.JSONArray;
 import org.json.JSONObject;
+
 
 import com.ipeirotis.readability.Readability;
 
@@ -43,15 +54,17 @@ public class FdpParser {
 	private static final Logger LOGGER = Logger.getLogger(FdpParser.class.getName());
 
 	//TODO Change to URI object
-	String uri; 
+	String uri;
+	String output;
 	
 	public FdpParser() {}
 	
-	public void parse(String uri){
+	public void parse(String uri, String output){
 		
-	this.uri = uri;	
+	setup(uri, output);
+
 		
-	LOGGER.info("NParser  v0.1");
+	LOGGER.info("NParser  v0.42");
 		
 	CatalogMetadata catalogMetadata = null;
 	DatasetMetadata datasetMetadata = null;
@@ -62,6 +75,10 @@ public class FdpParser {
      int ci = 0,  di  = 0 , dii = 0;
 	 List<IRI> catalogList;
 			try {
+				//TODO make it a log
+				System.out.println("Parsing "+uri.toString());
+				System.out.println("Sending to "+output);
+				
 				FDPMetadata fdpmetadata = this.loadFDP(uri);
 				
 			    List<IRI> catalogURI = fdpmetadata.getCatalogs();
@@ -95,75 +112,143 @@ public class FdpParser {
 			e1.printStackTrace();
 		}
 	       
-	       
-	    HttpURLConnect httpCon = new HttpURLConnect();
+		ESClient esclient = null;
+		HttpURLConnect httpCon = null;
+		
+		//setup connection	
+		if(send2es()) {   
+			httpCon = new HttpURLConnect();		    
+		    esclient = new JestESClient();
+		}
+		
+		if(send2file()) {
+			trucateFile(this.output);
+		}
+	    
 	    int i = 0;
-	    
-	    ESClient esclient = new JestESClient();
-	    
 	    for(JsonString jsonElem: jsonList){
-	    
-	    String data = "";
+	    	
+	    	String dataPreamble = "{ \"create\": { \"_index\": \"dataset\", \"_type\": \"dataset\", \"_id\": \""+jsonElem.getId()+"\"} }\n";
+	    	//String payload = "{ \"doc\" : " + jsonElem.getJson() + " } \n";
+	    	String payload = jsonElem.getJson();
+	    	String data = "";
 	    	
 		    try{
 		    	//add force import and force update
+		    	if(send2es()) {
+			    	if ( esclient.documentExists(jsonElem.getId()) ) {
+			    		dataPreamble = "{ \"update\": { \"_index\": \"dataset\", \"_type\": \"dataset\", \"_id\": \""+jsonElem.getId()+"\"}}\n";
+			    		data = "\n{ \"doc\" : " + payload +" }";
+			    		data = dataPreamble + payload + "\n";
+			    		httpCon.sendPost(output, data); //TODO get from command line
+			    	} else {
+			    		data = dataPreamble + payload + "\n";
+			    		httpCon.sendPost(output, data); //TODO get from command line
+			    	}
+			    	System.out.println("DATA:" + data);
+		    	} 
 		    	
-		    	if ( esclient.documentExists(jsonElem.getId()) ) {
-		    		data = "{ \"update\": { \"_index\": \"dataset\", \"_type\": \"dataset\", \"_id\": \""+jsonElem.getId()+"\"}}\n";  	
-		    		data += "{ \"doc\" : " + jsonElem.getJson() + " } \n";
-		    	} else {
-		    		data = "{ \"create\": { \"_index\": \"dataset\", \"_type\": \"dataset\", \"_id\": \""+jsonElem.getId()+"\"}}\n";
-		    		data += jsonElem.getJson() + "\n";
+		    	if(send2file()) {
+		    		data = dataPreamble + payload + "\n";
+		    		writeToFile(output, data);
 		    	}
-		    	System.out.println("\n"+data);
-		    	httpCon.sendPost("http://127.0.0.1:9200/_bulk", data);
+		    	
+		    	if(send2stdout()) {
+		    		data = dataPreamble + payload;
+		    		System.out.println(data);
+		    	}
+		    	
+		    			
 		    	
 		    } catch(IOException e){
-		    	System.out.println(e.getMessage());
-		    	System.out.println("Skipping "+jsonElem.getId()+". Error found while checking if data exists.");
+		    	System.err.println(e.getMessage());
+		    	System.err.println("Skipping "+jsonElem.getId()+". Error found while checking if data exists.");
 		    } catch (Exception e) {
-		    	System.out.println(e.getMessage());
-		    	System.out.println("Skipping "+jsonElem.getId()+". Error inserting data.");
+		    	System.err.println(e.getMessage());
+		    	System.err.println("Skipping "+jsonElem.getId()+". Error inserting data.");
 			}
     
 	    }
     
 	}
 	
-	private void setupJSON(FDPMetadata fdpmetadata, CatalogMetadata catalogMetadata, DatasetMetadata datasetMetadata, DistributionMetadata distributionMetdada, URI ctURI, List jsonList) throws MalformedURLException, MetadataParserException, IOException, MimeTypeException{
-		System.out.println("parsing datasets");
-		
+	private void setup(String uri, String output) {
+		this.uri = uri;
+	    this.output = output;
+	}
+	
+	private boolean send2stdout(){
+		if(output == null) return true;
+		else return false;
+	}
+	
+	private boolean send2es(){
+		if(output.toLowerCase().startsWith("http")) return true;
+		else return false;
+	}
+	
+	private boolean send2file() {
+		if(!output.toLowerCase().startsWith("http")) return true;
+		else return false;
+	}
+	
+	private void trucateFile(String file) {
+		FileChannel fc;
+		try {
+			fc = new FileOutputStream(file, true).getChannel();
+		    fc.truncate(0);
+		    fc.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+	}
+
+	private void writeToFile(String elasticSearch, String data) {
+		try {
+		    Files.write(Paths.get(elasticSearch), data.getBytes(), StandardOpenOption.APPEND , StandardOpenOption.CREATE);
+		}catch (IOException e) {
+			e.printStackTrace();
+		    System.err.println(e.getMessage());
+		}	
+	}
+
+	private void setupJSON(FDPMetadata fdpmetadata, CatalogMetadata catalogMetadata, DatasetMetadata datasetMetadata, DistributionMetadata distributionMetdada, URI ctURI, List jsonList) throws MalformedURLException, MetadataParserException, IOException, MimeTypeException, URISyntaxException{
+
 		List<IRI> dataset = catalogMetadata.getDatasets();
-		
-		System.out.println("parsed " +dataset.size()+ " datasets");
-		
+				
 		int  di = 0;
 		for(URI uri : dataset){
-			System.out.println(uri  +">> "+di++);
-			
+			System.out.println(uri +" >> "+di++);
 			
 			try {
 				datasetMetadata = this.doDatasetMetadaParser(uri);
 			} catch (Exception e) {
-				// TODO Auto-generated catch block
+				System.err.println("Error found in "+uri);
 				e.printStackTrace();
+				continue; //TODO improve; skips to next iteration 
 			}
 			
-		
-			
-			
+
 			List<IRI> distribution = datasetMetadata.getDistributions();
-				JSONObject es = new JSONObject();
+			JSONObject es = new JSONObject();
 				
-				//es.put("_id", uri.stringValue());
+			List<String> suggest = new Vector();
+			//es.put("_id", uri.stringValue());
+			
+			//if(catalogMetadata.getHomepage()!=null) es.put("latndingPage");
+			if(datasetMetadata.getTitle()!=null) es.put("title", datasetMetadata.getTitle().stringValue());
+			if(datasetMetadata.getDescription()!=null){
+				es.put("description", datasetMetadata.getDescription().stringValue());
+					
+				Readability r;
 				
-				//if(catalogMetadata.getHomepage()!=null) es.put("latndingPage");
-				if(datasetMetadata.getTitle()!=null) es.put("title", datasetMetadata.getTitle().stringValue());
-				if(datasetMetadata.getDescription()!=null){
-					es.put("description", datasetMetadata.getDescription().stringValue());
-					
-					Readability r = new Readability(datasetMetadata.getDescription().stringValue());
-					
+				if(false) {
+					r = new Readability(datasetMetadata.getDescription().stringValue());
+						
 					Map<String,Double> readabilityMetrics = new HashMap();
 					
 					readabilityMetrics.put("ARI", new Double(r.getARI()));
@@ -174,129 +259,169 @@ public class FdpParser {
 					readabilityMetrics.put("GunningFog", new Double(r.getGunningFog()));
 					readabilityMetrics.put("SMOG", new Double(r.getSMOG()));
 					readabilityMetrics.put("SMOGIndex", new Double(r.getSMOGIndex()));
-					
 					es.put("readabilityMetrics", readabilityMetrics);
 				}
-				if(catalogMetadata.getTitle()!=null) es.put("catalogTitle", catalogMetadata.getTitle().stringValue());
-				if(datasetMetadata.getLandingPage()!=null) es.put("landingPage", datasetMetadata.getLandingPage());
 				
-				List<Literal> keywordList = datasetMetadata.getKeywords();
-				List<String> keywordStringList = new Vector<String>();
 				
-				for(Literal keyword: keywordList){
-					keywordStringList.add(keyword.stringValue());
+			}
+			if(catalogMetadata.getTitle()!=null) es.put("catalogTitle", catalogMetadata.getTitle().stringValue());
+			if(datasetMetadata.getLandingPage()!=null) es.put("landingPage", datasetMetadata.getLandingPage());
+			
+			
+			List<Literal> keywordList = datasetMetadata.getKeywords();
+			List<String> keywordStringList = new Vector<String>();
+			
+			for(Literal keyword: keywordList){
+				keywordStringList.add(keyword.stringValue());
+			}
+			
+			
+			
+			IRI institutionCountry  = fdpmetadata.getInstitutionCountry();
+			List<IRI> catalogThemes = datasetMetadata.getThemes();
+			
+			List<String> themeList = new Vector<String>();
+			
+			for(IRI catalogTheme : catalogThemes) {
+				System.out.println(catalogTheme.stringValue());
+				Uri2Label uri2label = new Uri2Label(new java.net.URI(catalogTheme.stringValue()));
+				
+				List<String> labelListen = uri2label.getLabels("en");
+				for(String label : labelListen) {
+					String encLabel = URLEncoder.encode(label, "UTF-8");
+					themeList.add(encLabel);
+					suggest.add(encLabel);
+				}
+			
+				List<String> labelListnl = uri2label.getLabels("nl");
+
+				for(String label : labelListnl) {
+					String encLabel = URLEncoder.encode(label, "UTF-8");
+					themeList.add(encLabel);
+					suggest.add(encLabel);
 				}
 				
-				es.put("keyword", keywordStringList);
-				
-				IRI institutionCountry  = fdpmetadata.getInstitutionCountry();
-				List<IRI> catalogThemes = datasetMetadata.getThemes();
-				
-				es.put("repositoryTitle", fdpmetadata.getTitle().stringValue() );
-				es.put("repositoryCountry", "NL"); //TODO improve
-				
-				//es.put("description_suggest", datasetMetadata.getDescription().stringValue() );
-				
-				//es.put("suggest", new JSONObject().put("input", datasetMetadata.getDescription().stringValue() ));
-				List<String> suggest = new Vector();
-				
-				JestESClient jec = new JestESClient();
-				List<String> tokenList = jec.doTextAnalysis("english", datasetMetadata.getTitle().stringValue());
-				
-				//adding tokenized list from english
-				for(String token : tokenList)	
-							suggest.add( token );
-				//adding list of keywords
-				for(String keyword : keywordStringList)
-							suggest.add( keyword );
-				
-	
-				es.put("suggest", new JSONObject().put("input", suggest ));
-
-				
-				JSONArray coords = new JSONArray();
-					coords.put(new Double(52.13263));
-					coords.put(new Double(5.29126));
-				es.put("repositoryLocation", coords);
-				
-				List<IRI> taxonomyList = catalogMetadata.getThemeTaxonomys();
-				List<String> taxonomyStringList = new Vector();
-				
-				for(URI taxonomyUri: taxonomyList){ //adicionar
-					taxonomyStringList.add(taxonomyUri.stringValue());
-				}
-				
-				es.put("taxonomyList", taxonomyStringList);
+				themeList.add(catalogTheme.stringValue()); //add to synonims
 				
 
-				List<Map> distributionList = new Vector();
-						
-				for(URI distributionUri : distribution){
+				suggest.add(catalogTheme.stringValue());
+			}
+			
+			//todo add to model
+			es.put("theme", themeList);
+			
+			es.put("repositoryTitle", fdpmetadata.getTitle().stringValue() );
+			es.put("repositoryCountry", "NL"); //TODO improve
+			
+			//timestamp
+			Long timestamp =  (new Date().getTime())/1000;
+			es.put("updateTimestamp", timestamp);
+			
+			//es.put("description_suggest", datasetMetadata.getDescription().stringValue() );
+			
+			//es.put("suggest", new JSONObject().put("input", datasetMetadata.getDescription().stringValue() ));
+			
+			
+			JestESClient jec = new JestESClient();
+			List<String> tokenList = jec.doTextAnalysis("english", datasetMetadata.getTitle().stringValue());
+			
+			//adding tokenized list from english
+			for(String token : tokenList)	
+						suggest.add( token );
+			//adding list of keywords
+			for(String keyword : keywordStringList)
+						suggest.add( keyword );
+			
+
+			es.put("suggest", new JSONObject().put("input", suggest ));
+
+			
+			JSONArray coords = new JSONArray();
+				coords.put(new Double(52.13263));
+				coords.put(new Double(5.29126));
+			es.put("repositoryLocation", coords);
+			
+			List<IRI> taxonomyList = catalogMetadata.getThemeTaxonomys();
+			List<String> taxonomyStringList = new Vector();
+			
+			for(URI taxonomyUri: taxonomyList){ //adicionar
+				taxonomyStringList.add(taxonomyUri.stringValue());
+			}
+			
+			es.put("taxonomyList", taxonomyStringList);
+			
+
+			List<Map> distributionList = new Vector();
 					
-						   Map<String,String> distributionMap = new HashMap();
-						   //System.out.println(">>> "+dii++);
-						   try {
-							distributionMetdada = this.doDistributionMetadataParser(distributionUri);
-						} catch (Exception e) {
-							// TODO Auto-generated catch block
-							e.printStackTrace();
-						}
-						   
-						   if(distributionMetdada.getTitle()!=null)
-						     distributionMap.put("title", distributionMetdada.getTitle().stringValue());
-						   if(distributionMetdada.getDownloadURL()!=null)
-						     distributionMap.put("download",    distributionMetdada.getDownloadURL().stringValue());
+			for(URI distributionUri : distribution){
+				
+					   Map<String,String> distributionMap = new HashMap();
+					   //System.out.println(">>> "+dii++);
+					   try {
+						distributionMetdada = this.doDistributionMetadataParser(distributionUri);
+					} catch (Exception e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
+					   
+					   if(distributionMetdada.getTitle()!=null)
+					     distributionMap.put("title", distributionMetdada.getTitle().stringValue());
+					   if(distributionMetdada.getDownloadURL()!=null)
+					     distributionMap.put("download",    distributionMetdada.getDownloadURL().stringValue());
 
-						   if(distributionMetdada.getLicense()!=null){
-							   distributionMap.put("licenseURI", distributionMetdada.getLicense().stringValue());
-							  // if(Crawler.convertLicenseURIToAcronym(distributionMetdada.getLicense().stringValue())!=null)
-							  // distributionMap.put("licenseAcronym", Crawler.convertLicenseURIToAcronym(distributionMetdada.getLicense().stringValue()));
-							   distributionMap.put("licenseAcronym", "APACHE");
-						   }
-						   
-				
-						   
-						   
-						  // distributionMetdada.
-						   
-						   if(distributionMetdada.getDownloadURL()!=null){
-						   		int size = this.getFileSize(new URL( distributionMetdada.getDownloadURL().stringValue() ));
-						   		//int size = this.getFileSize(new URL( "http://www.sapo.pt/" ));
-						   		System.out.println("********* ******* ******** SIZE: "+size);
-						   		distributionMap.put( "downloadSize", size + "" );
-						   		distributionMap.put( "downloadHumanReadableSize", Crawler.humanReadableByteCount(size, false) );
-						   }
-						   
-						   
-						   if(distributionMetdada.getAccessURL()!=null)
-						     distributionMap.put("accessURL",   distributionMetdada.getAccessURL().stringValue());
-						   if(distributionMetdada.getFormat()!=null)
-							 distributionMap.put("format", distributionMetdada.getFormat().stringValue());
-						   else{
-							   if(distributionMetdada.getMediaType()!=null && distributionMetdada.getFormat()==null){
-								   String sourceMymeType = distributionMetdada.getMediaType().stringValue();
-								   MimeTypes allTypes = MimeTypes.getDefaultMimeTypes();
-								   //TODO treat exception here
-								   org.apache.tika.mime.MimeType mimeType = allTypes.forName(sourceMymeType);
-								   String fileExtension = mimeType.getExtension();
-								   distributionMap.put("format", fileExtension);
-							   } else distributionMap.put("format", "unknown");
-						   }
-						    // distributionMap.put("xxx", "xxxxxx");
-						   
-						   distributionList.add(distributionMap);
-				}	
-				es.put("distribution", distributionList);
-				
-				//improve structure
-				es.put("FDPurl", this.uri);
-				es.put("catalogURL", ctURI);
-				es.put("datasetURL", uri);
-				
-				//jsonList.add("datasetURL")
-				
-				System.out.println("JSON: "+es.toString());
-				jsonList.add(new JsonString(uri.stringValue() , es.toString()));
+					   if(distributionMetdada.getLicense()!=null){
+						   distributionMap.put("licenseURI", distributionMetdada.getLicense().stringValue());
+						  // if(Crawler.convertLicenseURIToAcronym(distributionMetdada.getLicense().stringValue())!=null)
+						  // distributionMap.put("licenseAcronym", Crawler.convertLicenseURIToAcronym(distributionMetdada.getLicense().stringValue()));
+						   distributionMap.put("licenseAcronym", "APACHE");
+					   }
+					   
+			
+					   if(distributionUri.stringValue()!=null)
+						   distributionMap.put("distributionURI", distributionUri.stringValue());
+					   
+					  // distributionMetdada.
+					   
+					   if(distributionMetdada.getDownloadURL()!=null){
+					   		int size = this.getFileSize(new URL( distributionMetdada.getDownloadURL().stringValue() ));
+					   		//int size = this.getFileSize(new URL( "http://www.sapo.pt/" ));
+					   		System.out.println("********* ******* ******** SIZE: "+size);
+					   		distributionMap.put( "downloadSize", size + "" );
+					   		distributionMap.put( "downloadHumanReadableSize", Crawler.humanReadableByteCount(size, false) );
+					   }
+					   
+					   
+					   if(distributionMetdada.getAccessURL()!=null)
+					     distributionMap.put("accessURL",   distributionMetdada.getAccessURL().stringValue());
+					   if(distributionMetdada.getFormat()!=null)
+						 distributionMap.put("format", distributionMetdada.getFormat().stringValue());
+					   else{
+						   if(distributionMetdada.getMediaType()!=null && distributionMetdada.getFormat()==null){
+							   String sourceMymeType = distributionMetdada.getMediaType().stringValue();
+							   MimeTypes allTypes = MimeTypes.getDefaultMimeTypes();
+							   //TODO treat exception here
+							   org.apache.tika.mime.MimeType mimeType = allTypes.forName(sourceMymeType);
+							   String fileExtension = mimeType.getExtension();
+							   distributionMap.put("format", fileExtension);
+						   } else distributionMap.put("format", "unknown");
+					   }
+					    // distributionMap.put("xxx", "xxxxxx");
+					   
+					   distributionList.add(distributionMap);
+			}	
+			es.put("distribution", distributionList);
+			
+			//improve structure
+			es.put("FDPurl", this.uri);
+			es.put("catalogURL", ctURI);
+			es.put("datasetURL", uri);
+			
+			es.put("keyword", keywordStringList);
+			
+			//jsonList.add("datasetURL")
+			
+			System.out.println("JSON: "+es.toString());
+			jsonList.add(new JsonString(uri.stringValue() , es.toString()));
 		}
 	}
 	
@@ -418,7 +543,6 @@ public class FdpParser {
 		HttpURLConnect httpCon = new HttpURLConnect();
 		
 		//InputStream in2 = new URL(distributionUri.stringValue()).openStream();
-		
 		
 		DistributionMetadata distributionMetadata = disMP.parse(httpCon.sendGet(distributionUri.stringValue()), new URIImpl(distributionUri.toString()), RDFFormat.TURTLE );
 	
